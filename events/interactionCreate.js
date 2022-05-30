@@ -1,16 +1,5 @@
-const { MessageEmbed } = require('discord.js');
 const { isTest } = require('../config.json');
-
-function sendErrMSG(interaction, error) {
-	const errorEmbed = new MessageEmbed()
-	.setColor('#ed4245')
-	.setTitle(`명렁어 실행 중 오류가 발생하였습니다.`)
-	.setAuthor({ name: '에러 메시지'})
-	.setDescription(`${isTest ? "\n"+error.message : ""}`)
-	.setTimestamp();
-	
-	interaction.channel.send({ embeds: [errorEmbed] });
-}
+const {errorEmbed} = require('../structures/embedMsg.js');
 
 module.exports = {
 	name: 'interactionCreate',
@@ -29,7 +18,7 @@ module.exports = {
             }
         } catch (error) {
             console.error(error);
-            sendErrMSG(interaction, error);
+            interaction.channel.send({ embeds: errorEmbed("명렁어 실행 중 오류가 발생하였습니다.", `${isTest ? "\n"+error.message : ""}`) });
         }
 	},
 };

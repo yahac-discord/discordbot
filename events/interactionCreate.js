@@ -1,9 +1,12 @@
+const { MessageEmbed } = require('discord.js');
+const { isTest } = require('../config.json');
+
 function sendErrMSG(interaction, error) {
 	const errorEmbed = new MessageEmbed()
 	.setColor('#ed4245')
 	.setTitle(`명렁어 실행 중 오류가 발생하였습니다.`)
 	.setAuthor({ name: '에러 메시지'})
-	.setDescription(`${test ? "\n"+error.message : ""}`)
+	.setDescription(`${isTest ? "\n"+error.message : ""}`)
 	.setTimestamp();
 	
 	interaction.channel.send({ embeds: [errorEmbed] });
@@ -11,22 +14,19 @@ function sendErrMSG(interaction, error) {
 
 module.exports = {
 	name: 'interactionCreate',
-	execute(interaction) {
+	execute(client, interaction) {
 		console.log(`${interaction.user.tag} in #${interaction.channel.name} triggered an interaction.`);
         
-        if (interaction.isModalSubmit()) {
-            client.commands.get(interaction.customId).process(interaction);
-        }
-    
-        if (!interaction.isCommand()) {return;}
-    
-        const command = client.commands.get(interaction.commandName);
-        
-        if (!command) {return;}
-        
         try {
-            command.execute(interaction);
-            throw "에러 로그 테스트";
+            if (interaction.isCommand()) {
+                const command = client.commands.get(interaction.commandName);
+                if (!command) {return;}
+                
+                command.execute(interaction);
+            }
+            if (interaction.isModalSubmit()) {
+                client.commands.get(interaction.customId).process(interaction);
+            }
         } catch (error) {
             console.error(error);
             sendErrMSG(interaction, error);

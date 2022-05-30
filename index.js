@@ -15,36 +15,17 @@ for (const file of commandFiles) {
 	client.commands.set(command.data.name, command);
 }
 
-client.once('ready', () => {
-	console.log('Ready!');
-});
+const eventsPath = path.join(__dirname, 'events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
-client.on('interactionCreate', async interaction => {
-    if (interaction.isModalSubmit()) {
-        await client.commands.get(interaction.customId).process(interaction);
-    }
-
-	if (!interaction.isCommand()) {return;}
-
-	const command = client.commands.get(interaction.commandName);
-    
-	if (!command) {return;}
-    
-	try {
-		await command.execute(interaction);
-        
-	} catch (error) {
-		console.error(error);
-		
-		const errorEmbed = new MessageEmbed()
-        .setColor('#ed4245')
-		.setTitle(`명렁어 실행 중 오류가 발생하였습니다.`)
-        .setAuthor({ name: '에러 메시지'})
-        .setDescription(`${test ? "\n"+error.message : ""}`)
-        .setTimestamp();
-        
-        await interaction.channel.send({ embeds: [errorEmbed] });
+for (const file of eventFiles) {
+	const filePath = path.join(eventsPath, file);
+	const event = require(filePath);
+	if (event.once) {
+		client.once(event.name, (...args) => event.execute(...args));
+	} else {
+		client.on(event.name, (...args) => event.execute(...args));
 	}
-});
+}
 
 client.login(token);

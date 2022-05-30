@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, Intents } = require('discord.js');
-const { token } = require('./config.json');
+const { Client, Collection, Intents, MessageEmbed } = require('discord.js');
+const { token, test } = require('./config.json');
 
 const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
 
@@ -35,7 +35,15 @@ client.on('interactionCreate', async interaction => {
         
 	} catch (error) {
 		console.error(error);
-		await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+		
+		const errorEmbed = new MessageEmbed()
+        .setColor('#ed4245')
+		.setTitle(`명렁어 실행 중 오류가 발생하였습니다.`)
+        .setAuthor({ name: '에러 메시지'})
+        .setDescription(`${test ? "\n"+error.message : ""}`)
+        .setTimestamp();
+        
+        await interaction.channel.send({ embeds: [errorEmbed] });
 	}
 });
 

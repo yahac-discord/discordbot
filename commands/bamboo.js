@@ -26,9 +26,9 @@ module.exports = {
         // so you need one action row per text input.
         const firstActionRow = new MessageActionRow().addComponents(titleInput);
         const secondActionRow = new MessageActionRow().addComponents(contensInput);
-        const thirdActionRow = new MessageActionRow().addComponents(authorInput);
+
         // Add inputs to the modal
-        modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
+        modal.addComponents(firstActionRow, secondActionRow);
         // Show the modal to the user
         return await interaction.showModal(modal);
     },

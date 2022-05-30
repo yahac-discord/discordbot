@@ -10,7 +10,7 @@ module.exports = {
         .setTimestamp();
         return [embed];
     },
-    bambooInfoEmbed(interaction, title, content) {
+    bambooInfoEmbed(interaction, tilte, contens) {
         const embed = new MessageEmbed()
         .setColor('#98c379')
         .setTitle(`${tilte}`)

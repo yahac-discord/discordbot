@@ -1,6 +1,7 @@
 const { MessageActionRow, Modal, TextInputComponent } = require('discord.js');
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { bambooEmbed } = require("../structures/embedMsg.js")
+const { bambooInfoEmbed } = require("../structures/embedMsg.js");
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('bamboo')
@@ -29,12 +30,12 @@ module.exports = {
         const title = interaction.fields.getTextInputValue('tilteInput');
         const contens = interaction.fields.getTextInputValue('contensInput');
         
-        interaction.reply({ content: `대나무 숲에 새로운 외침이 나타났습니다.`, embeds: bambooEmbed(interaction, title, contens) });
+        interaction.reply({ content: `대나무 숲에 새로운 외침이 들립니다.`, embeds: bambooInfoEmbed(interaction, title, contens) });
 
         const message = await interaction.fetchReply();
         
         return await message.startThread({
-            name: `${tilte}`,
+            name: `${title}`,
             autoArchiveDuration: 60,
             reason: '대나무 숲 질문 생성',
         });

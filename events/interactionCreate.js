@@ -18,7 +18,15 @@ module.exports = {
             }
         } catch (error) {
             console.error(error);
-            interaction.channel.send({ embeds: errorEmbed("명렁어 실행 중 오류가 발생하였습니다.", `${isTest ? "\n"+error.message : ""}`) });
+            interaction.reply(
+                { 
+                    ephemeral: true, 
+                    embeds: errorEmbed(
+                        "명렁어 실행 중 오류가 발생하였습니다.", 
+                        `${interaction.commandName} 명령 처리 중 에러가 발생하였습니다.${isTest ? "\n\n" + error.message + "\n\n" + error.stack : ""}`
+                    )
+                }
+            ); 
         }
 	},
 };

@@ -26,16 +26,14 @@ jobs:
       - uses: actions/checkout@v3
 
       # Runs a single command using the runners shell
-      - name: make ssh key
-        run: |
-          cd ~
-          mkdir .ssh
-          cd .ssh
-          echo ${{ secrets.SSH_KEY }} > id_rsa
-          
-      - name: ssh connect
-        run: |
-          ssh ubuntu@ssh.code.r-e.kr
-          cd discordBot
-          git pull
-          node deploy-commands.js
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.REMOTE_IP }}
+          username: ${{ secrets.REMOTE_SSH_ID }}
+          key: ${{ secrets.REMOTE_SSH_KEY }}
+          port: ${{ secrets.REMOTE_SSH_PORT }}
+          script: |
+            cd discordBot
+            git pull
+            node deploy-commands.js

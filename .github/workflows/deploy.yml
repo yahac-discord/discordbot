@@ -29,7 +29,8 @@ jobs:
       - name: make ssh key
         run: |
           cd ~
-          cd mkdir .ssh
+          mkdir .ssh
+          cd .ssh
           echo ${{ secrets.SSH_KEY }} > id_rsa
           
       - name: ssh connect

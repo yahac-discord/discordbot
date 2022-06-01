@@ -14,7 +14,7 @@ module.exports = {
         const embed = new MessageEmbed()
         .setColor('#98c379')
         .setTitle(`${tilte}`)
-        .setAuthor({ name: '코딩야학 대나무숲', iconURL: interaction.guild.bannerURL(), url: 'https://cdn.discordapp.com/icons/336499288001478656/5aeb8b9b13d13c046bebb46524b77e29.webp?size=96' })
+        .setAuthor({ name: '코딩야학 대나무숲', iconURL: interaction.guild.iconURL(), url: 'https://cdn.discordapp.com/icons/336499288001478656/5aeb8b9b13d13c046bebb46524b77e29.webp?size=96' })
         .setDescription(`${contens}`)
         .setTimestamp()
         .setFooter({ 

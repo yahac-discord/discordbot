@@ -16,6 +16,12 @@ module.exports = {
             if (interaction.isModalSubmit()) {
                 client.commands.get(interaction.customId).process(interaction);
             }
+            if (interaction.isSelectMenu()) {
+                client.commands.get(interaction.customId.replace("sel_", "")).select(interaction);
+            }
+            if (interaction.isButton()) {
+                client.commands.get(interaction.customId.replace("btn_", "")).button(interaction);
+            }
         } catch (error) {
             console.error(error);
             interaction.reply(

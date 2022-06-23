@@ -4,6 +4,44 @@ const sqlite3 = require('sqlite3').verbose();
 const {errorEmbed} = require('../structures/embedMsg.js');
 const path = require('path'); // path 모듈 불러와서 변수에 담기
 
+async function getPollGraph(db, pollId) {
+        db.serialize();
+        let result = await new Promise((resolve, reject) => {
+            db.all(`SELECT * FROM "poll-${pollId}" ORDER BY voteCount DESC`, [], (err, rows) => {
+              if (err) {
+                console.log('Error running sql: ' + sql);
+                console.log(err);
+                reject(err);
+              } else {
+                resolve(rows);
+              }
+            });
+        });
+        
+        let pollItemLoop = [],
+            graphLoop = [],
+            graphTotalVotes = 0;
+        
+        for (let i = 0; i < result.length; i++) {
+            pollItemLoop.push(`${result[i].pollItem}`);
+            graphTotalVotes += result[i].voteCount;
+        }
+
+        for (let i = 0; i < result.length; i++) {
+            let dotCnt = Math.round(((100 * result[i].voteCount / graphTotalVotes) / 10));
+            let rem = (100 * result[i].voteCount / graphTotalVotes) % 10;
+            let dots = "▮".repeat(dotCnt==10 || !dotCnt ? dotCnt : dotCnt-1);
+            let left = 10 - (Math.round((100 * result[i].voteCount / graphTotalVotes) / 10));
+            let empty = "▯".repeat(left);
+            graphLoop.push(`[${dots}${rem?rem:''}${empty}] (${result[i].voteCount}) ${(100 * result[i].voteCount / graphTotalVotes).toFixed(2)}%`);
+        }
+        
+        let pollItem = pollItemLoop.toString().split(',').join("\r\n"),
+            graph = graphLoop.toString().split(',').join("\r\n");
+
+        return {pollItem: pollItem, graph:graph, graphTotalVotes:graphTotalVotes};
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('poll')
@@ -88,6 +126,7 @@ module.exports = {
     },
 
     async process(interaction) {
+        console.log(interaction);
         const db = await new sqlite3.Database(path.resolve(__dirname, '../data/main.db'), sqlite3.OPEN_READWRITE, (err) => {
             if (err) {
                 console.error(err.message);
@@ -194,12 +233,12 @@ module.exports = {
                             reason: `'${embedTitle} 투표 생성에 따른 스레드 생성.'`,
                         });
                     } else {
-                        console.log("Couldn't create thread.");
+                        console.log("스레드를 생성하지 않습니다.");
 
                         const threadEmbed = new MessageEmbed()
                             .setColor('#ff6633')
                             .setTitle(`Thread 생성 실패`)
-                            .setDescription(`An error occured while creating the thread for the poll.\n\nPlease add the \`MANAGE_THREADS\` permission to access this feature.`)
+                            .setDescription(`스레드 생성 권한이 없습니다.`)
                             .setImage('https://support.discord.com/hc/article_attachments/4406694690711/image1.png')
                             .setTimestamp();
                         
@@ -216,16 +255,16 @@ module.exports = {
                 interaction.guild.roles.create({
                     name: roleName,
                     color: "#ff6633",
-                    reason: "Automatically creating \"Poll Manager\" for bot functions."
+                    reason: "봇에 의한 자동 생성."
                 }).then(role => {
                     interaction.reply({
-                            content: "It appears you don't have the permission \`MANAGE_GUILD\` to create a poll, I've created the role \`\"Poll Manager\"\` for you to utilize instead. Simply add the role to yourself and anyone else that you want to have permissions to create and close polls.",
+                            content: "투표 생성 권한이 없습니다.",
                             ephemeral: true,
                         });
                 });
             } else {
                 interaction.reply({
-                    content: `Sorry! You don't have the \`MANAGE_GUILD\` permission and I don't have permissions to create the \`\"Poll Manager\"\` role for you.\nPlease ask an administrator to run the \`/poll\` command for you or ask them to create the \`\"Poll Manager\"\` role and apply it to you.`,
+                    content: `투표 생성 권한이 없습니다. 관리자에게 권한을 요청하시기 바랍니다.`,
                     ephemeral: true,
                 });
             }
@@ -252,51 +291,65 @@ module.exports = {
             let choice = interaction.values[0];
             let member = interaction.member;
             
-            let sql = Object.values(await db.get(`SELECT EXISTS(SELECT userId FROM "user-${interaction.message.id}" WHERE userId=${member.id} LIMIT 1);`));
-            let publicPoll = Object.values(await db.get(`SELECT EXISTS(SELECT publicPoll FROM "poll-${interaction.message.id}" WHERE publicPoll="true" LIMIT 1);`));
-            
             db.serialize();
-            db.all(query,(err,row)=>{
-               console.log(row)
+            
+            let isChange = await new Promise((resolve, reject) =>{
+                db.get(
+                    `SELECT EXISTS(SELECT userId FROM "user-${interaction.message.id}" WHERE userId=${member.id} LIMIT 1);`, 
+                    [], 
+                    (err, row) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        if(row) {
+                            resolve(Object.values(row)[0]);
+                        }
+                    });
+            });
+              
+            let isPublic = await new Promise((resolve, reject) => {
+                db.get(
+                    `SELECT EXISTS(SELECT publicPoll FROM "poll-${interaction.message.id}" WHERE publicPoll="true" LIMIT 1);`, 
+                    [], 
+                    (err, row) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        if(row) {
+                            resolve(Object.values(row)[0]);
+                        }
+                    });
             });
 
-            if (sql[0]) {
-                let user = Object.values(await db.get(`SELECT * FROM "user-${interaction.message.id}" WHERE userId=${member.id} LIMIT 1;`));
-                let originalChoice = user[2];
+            if (isChange) {
+                let originalChoice = await new Promise((resolve, reject) => {
+                    db.get(
+                        `SELECT * FROM "user-${interaction.message.id}" WHERE userId=${member.id} LIMIT 1;`, 
+                        [], 
+                        (err, row) => {
+                            if (err) {
+                                reject(err);
+                            }
+                            if(row) {
+                                resolve(Object.values(row)[2]);
+                            }
+                        });
+                });
 
                 await db.run(`UPDATE "user-${interaction.message.id}" SET pollItem = ? WHERE userId=${member.id}`, `${choice}`);
                 await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount + 1 WHERE pollItem= ?`, `${choice}`);
                 await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount - 1 WHERE pollItem= ?`, `${originalChoice}`);
 
-                if (publicPoll[0] === 1) {
-                    const result = await db.all(`SELECT * FROM "poll-${interaction.message.id}" ORDER BY voteCount DESC`);
+                if (isPublic) {
+                    const result = await getPollGraph(db, interaction.message.id);
                     
-                    let pollItemLoop = [],
-                        graphLoop = [],
-                        graphTotalVotes = 0;
-                    
-                        for (let i = 0; i < result.length; i++) {
-                        pollItemLoop.push(`${result[i].pollItem}`);
-                        graphTotalVotes += result[i].voteCount;
-                    }
-
-                    for (let i = 0; i < result.length; i++) {
-                        let dots = "▮".repeat(Math.round(((100 * result[i].voteCount / graphTotalVotes) / 10)-1));
-                        let rem = (100 * result[i].voteCount / graphTotalVotes) % 10;
-                        let left = 10 - (Math.round((100 * result[i].voteCount / graphTotalVotes) / 10));
-                        let empty = "▯".repeat(left);
-                        graphLoop.push(`${result[i].pollItem}:[${dots}${rem}${empty}] (${result[i].voteCount}) ${(100 * result[i].voteCount / graphTotalVotes).toFixed(2)}%`);
-                    }
-                    
-                    let pollItem = pollItemLoop.toString().split(',').join("\r\n"),
-                        graph = graphLoop.toString().split(',').join("\r\n");
-
                     const embed = new MessageEmbed()
                         .setColor('#ff6633')
                         .setTitle(`${interaction.message.embeds[0].title}`)
                         .setDescription(`${interaction.message.embeds[0].description}`)
-                        .addField(`Item`, pollItem, true)
-                        .addField(`Results (Total Votes: ${graphTotalVotes})`, graph, true);
+                        .addField(`Item`, result.pollItem, true)
+                        .addField(`Results (Total Votes: ${result.graphTotalVotes})`, result.graph, true)
+                        .setTimestamp(interaction.message.embeds[0].timestamp);
                     
                     try {
                         await interaction.update({
@@ -305,56 +358,28 @@ module.exports = {
                     } catch (err) {
                         console.log(`${err}`);
                     }
-                    
-                    await interaction.followUp({
-                            content: `"You've changed your vote from "${originalChoice}" to "${choice}".`,
-                            fetchReply: true,
-                            ephemeral: true
-                        })
-                        .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}".`))
-                        .catch(console.error);
-                } else {
-                    await interaction.reply({
-                            content: `"You've changed your vote from "${originalChoice}" to "${choice}".`,
-                            fetchReply: true,
-                            ephemeral: true
-                        })
-                        .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}"}.`))
-                        .catch(console.error);
                 }
+                await interaction.followUp({
+                    content: `"투표항목을 "${originalChoice}" 에서 "${choice}"로 변경하였습니다.`,
+                    fetchReply: true,
+                    ephemeral: true
+                })
+                .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}".`))
+                .catch(console.error);
             } else {
                 await db.run(`INSERT INTO "user-${interaction.message.id}" (userName, userId, pollItem) VALUES (?, ?, ?)`, `${member.displayName}`, `${member.id}`, `${choice}`);
                 await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount + 1 WHERE pollItem= ?`, `${choice}`);
                 
-                if (publicPoll[0] === 1) {
-                    const result = await db.all(`SELECT * FROM "poll-${interaction.message.id}" ORDER BY voteCount DESC`);
+                if (isPublic) {
+                    const result = await getPollGraph(db, interaction.message.id);
                     
-                    let pollItemLoop = [],
-                        graphLoop = [],
-                        graphTotalVotes = 0;
-                    
-                        for (let i = 0; i < result.length; i++) {
-                        pollItemLoop.push(`${result[i].pollItem}`);
-                        graphTotalVotes += result[i].voteCount;
-                    }
-
-                    for (let i = 0; i < result.length; i++) {
-                        let dots = "▮".repeat(Math.round(((100 * result[i].voteCount / graphTotalVotes) / 10)-1));
-                        let rem = (100 * result[i].voteCount / graphTotalVotes) % 10;
-                        let left = 10 - (Math.round((100 * result[i].voteCount / graphTotalVotes) / 10));
-                        let empty = "▯".repeat(left);
-                        graphLoop.push(`${result[i].pollItem}:[${dots}${rem}${empty}] (${result[i].voteCount}) ${(100 * result[i].voteCount / graphTotalVotes).toFixed(2)}%`);
-                    }
-                    
-                    let pollItem = pollItemLoop.toString().split(',').join("\r\n"),
-                        graph = graphLoop.toString().split(',').join("\r\n");
-
                     const embed = new MessageEmbed()
                         .setColor('#ff6633')
                         .setTitle(`${interaction.message.embeds[0].title}`)
                         .setDescription(`${interaction.message.embeds[0].description}`)
-                        .addField(`Item`, pollItem, true)
-                        .addField(`Results (Total Votes: ${graphTotalVotes})`, graph, true);
+                        .addField(`Item`, result.pollItem, true)
+                        .addField(`Results (Total Votes: ${result.graphTotalVotes})`, result.graph, true)
+                        .setTimestamp(interaction.message.embeds[0].timestamp);
 
                     try {
                         await interaction.update({
@@ -363,22 +388,15 @@ module.exports = {
                     } catch (err) {
                         console.log(`! UPDATE POLL ERR \n ${err}`);
                     }
-                    await interaction.followUp({
-                            content: `"${choice}" chosen.`,
-                            fetchReply: true,
-                            ephemeral: true
-                        })
-                        .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
-                        .catch(console.error);
-                } else {
-                    await interaction.reply({
-                            content: `"${choice}" chosen.`,
-                            fetchReply: true,
-                            ephemeral: true
-                        })
-                        .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
-                        .catch(console.error);
+                    
                 }
+                await interaction.followUp({
+                    content: `"${choice}" 를 선택하였습니다.`,
+                    fetchReply: true,
+                    ephemeral: true
+                })
+                .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
+                .catch(console.error);
             }
         } catch (err) {
             console.log("vote change error: " + err);
@@ -392,7 +410,6 @@ module.exports = {
                 return interaction.reply({ 
                     ephemeral: true, 
                     embeds: errorEmbed(
-                        "투표를 생성하지 못했습니다.", 
                         `명령 처리 중 에러가 발생하였습니다.\n\n${err.message}`
                     )
                 });
@@ -404,35 +421,19 @@ module.exports = {
         try {
             let roleName = "Poll Manager";
             if (interaction.member.roles.cache.some(role => role.name === roleName) || interaction.member.permissions.has(Permissions.FLAGS['MANAGE_GUILD'])) {
-                const result = await db.all(`SELECT * FROM "poll-${interaction.message.id}" ORDER BY voteCount DESC`);
-                
-                let pollItemLoop = [],
-                    graphLoop = [],
-                    graphTotalVotes = 0;
-                
-                for (let i = 0; i < result.length; i++) {
-                    pollItemLoop.push(`${result[i].pollItem}`);
-                    graphTotalVotes += result[i].voteCount;
-                }
-
-                for (let i = 0; i < result.length; i++) {
-                    let dots = "▮".repeat(Math.round(((100 * result[i].voteCount / graphTotalVotes) / 10)-1));
-                    let rem = (100 * result[i].voteCount / graphTotalVotes) % 10;
-                    let left = 10 - (Math.round((100 * result[i].voteCount / graphTotalVotes) / 10));
-                    let empty = "▯".repeat(left);
-                    graphLoop.push(`${result[i].pollItem}:[${dots}${rem}${empty}] (${result[i].voteCount}) ${(100 * result[i].voteCount / graphTotalVotes).toFixed(2)}%`);
-                }
-                
-                let pollItem = pollItemLoop.toString().split(',').join("\r\n"),
-                    graph = graphLoop.toString().split(',').join("\r\n");
-
+                const result = await getPollGraph(db, interaction.message.id);
+                    
                 const embed = new MessageEmbed()
                     .setColor('#ff6633')
                     .setTitle(`${interaction.message.embeds[0].title}`)
                     .setDescription(`${interaction.message.embeds[0].description}`)
-                    .addField(`Item`, pollItem, true)
-                    .addField(`Results (Total Votes: ${graphTotalVotes})`, graph, true)
-                    .setFooter(`Poll closed at ${interaction.createdAt} by ${interaction.member.displayName}`);
+                    .addField(`Item`, result.pollItem, true)
+                    .addField(`Results (Total Votes: ${result.graphTotalVotes})`, result.graph, true)
+                    .setFooter({ 
+                        text: `Poll closed at ${interaction.createdAt} by ${interaction.member.displayName}`, 
+                        iconURL: interaction.guild.iconURL()
+                    })
+                    .setTimestamp(interaction.message.embeds[0].timestamp);
 
                 try {
                     await interaction.update({

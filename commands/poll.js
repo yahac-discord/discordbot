@@ -46,18 +46,6 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('poll')
         .setDescription('새로운 투표를 생성합니다.')
-        .addStringOption(option =>
-            option.setName('title')
-            .setDescription('제목을 입력합니다.')
-            .setRequired(true))
-        .addStringOption(option =>
-            option.setName('description')
-            .setDescription('내용을 입력합니다. \\n을 이용하여 줄바꿈을 할 수 있습니다.')
-            .setRequired(true))
-        .addStringOption(option =>
-            option.setName('items')
-            .setDescription('투표 항목을 입력합니다. 쉼표(,)를 이용하여 항목을 구분합니다.')
-            .setRequired(true))
         .addBooleanOption(option =>
             option.setName('public')
             .setDescription('투표 중 투표 현황을 공개할지 설정합니다. true로 설정하면 투표 중 집계 현황을 공개합니다.')
@@ -68,33 +56,27 @@ module.exports = {
             .setRequired(false)),
 
     async execute(interaction) {
-        const embedTitle = interaction.options.getString('title');
-        const embedDescription = interaction.options.getString('description');
-        const pollList = interaction.options.getString('items');
         const publicPoll = interaction.options.getBoolean('public');
         const createThread = interaction.options.getBoolean('thread');
 
         const modal = new Modal()
-            .setCustomId('poll') // cmd Name과 같게 설정해야 함.
+            .setCustomId('poll')
             .setTitle('아래와 같이 생성하시겠습니까?');
 
         const titleInput = new TextInputComponent()
             .setCustomId('titleInput')
             .setLabel("제목을 입력하세요.")
-            .setStyle('SHORT')
-            .setValue(embedTitle);
+            .setStyle('SHORT');
 
         const descriptionInput = new TextInputComponent()
             .setCustomId('descriptionInput')
             .setLabel("내용을 입력해주세요")
-            .setStyle('PARAGRAPH')
-            .setValue(embedDescription);
+            .setStyle('PARAGRAPH');
 
         const itemInput = new TextInputComponent()
             .setCustomId('itemInput')
             .setLabel("투표 항목을 입력하세요. 쉼표(,)를 이용하여 항목을 구분합니다")
-            .setStyle('SHORT')
-            .setValue(pollList);
+            .setStyle('SHORT');
 
         const isPublicInput = new TextInputComponent()
             .setCustomId('isPublicInput')
@@ -151,6 +133,7 @@ module.exports = {
 
         if (interaction.guild.roles.cache.find(role => role.name == roleName) || interaction.member.permissions.has(Permissions.FLAGS.MANAGE_GUILD)) { 
             const pollListArr = [...new Set(pollList.split(","))].filter(item => item != "");
+            console.log(pollListArr);
             const labelArr = pollListArr.map(x => ({
                 label: x,
                 value: x,

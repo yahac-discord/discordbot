@@ -126,7 +126,6 @@ module.exports = {
     },
 
     async process(interaction) {
-        console.log(interaction);
         const db = await new sqlite3.Database(path.resolve(__dirname, '../data/main.db'), sqlite3.OPEN_READWRITE, (err) => {
             if (err) {
                 console.error(err.message);
@@ -151,7 +150,7 @@ module.exports = {
         const createThread = interaction.fields.getTextInputValue('isCreateThreadInput').toLowerCase();
 
         if (interaction.guild.roles.cache.find(role => role.name == roleName) || interaction.member.permissions.has(Permissions.FLAGS.MANAGE_GUILD)) { 
-            const pollListArr = [...new Set(pollList.split(","))];
+            const pollListArr = [...new Set(pollList.split(","))].filter(item => item != "");
             const labelArr = pollListArr.map(x => ({
                 label: x,
                 value: x,
@@ -358,15 +357,23 @@ module.exports = {
                     } catch (err) {
                         console.log(`${err}`);
                     }
+                    await interaction.followUp({
+                        content: `"투표항목을 "${originalChoice}" 에서 "${choice}"로 변경하였습니다.`,
+                        fetchReply: true,
+                        ephemeral: true
+                    })
+                    .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}".`))
+                    .catch(console.error);
                 }
-                await interaction.reply({
-                    content: `"투표항목을 "${originalChoice}" 에서 "${choice}"로 변경하였습니다.`,
-                    fetchReply: true,
-                    ephemeral: true
-                })
-                .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}".`))
-                .catch(console.error);
-                
+                else {
+                    await interaction.reply({
+                        content: `"투표항목을 "${originalChoice}" 에서 "${choice}"로 변경하였습니다.`,
+                        fetchReply: true,
+                        ephemeral: true
+                    })
+                    .then(console.log(`+ vote change: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s new choice of "${originalChoice}" to "${choice}" in "./data/main.db:user-${interaction.message.id}".`))
+                    .catch(console.error);
+                }
                 
             } else {
                 await db.run(`INSERT INTO "user-${interaction.message.id}" (userName, userId, pollItem) VALUES (?, ?, ?)`, `${member.displayName}`, `${member.id}`, `${choice}`);
@@ -390,15 +397,24 @@ module.exports = {
                     } catch (err) {
                         console.log(`! UPDATE POLL ERR \n ${err}`);
                     }
+                    
+                    await interaction.followUp({
+                        content: `"${choice}" 를 선택하였습니다.`,
+                        fetchReply: true,
+                        ephemeral: true
+                    })
+                    .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
+                    .catch(console.error);
                 }
-                await interaction.reply({
-                    content: `"${choice}" 를 선택하였습니다.`,
-                    fetchReply: true,
-                    ephemeral: true
-                })
-                .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
-                .catch(console.error);
-            
+                else {
+                    await interaction.reply({
+                        content: `"${choice}" 를 선택하였습니다.`,
+                        fetchReply: true,
+                        ephemeral: true
+                    })
+                    .then(console.log(`+ vote: saved ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}]s choice of "${choice}" to "./data/main.db:user-${interaction.message.id}".`))
+                    .catch(console.error);
+                }
             }
         } catch (err) {
             console.log("vote change error: " + err);

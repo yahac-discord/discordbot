@@ -133,7 +133,6 @@ module.exports = {
 
         if (interaction.guild.roles.cache.find(role => role.name == roleName) || interaction.member.permissions.has(Permissions.FLAGS.MANAGE_GUILD)) { 
             const pollListArr = [...new Set(pollList.split(","))].filter(item => item != "");
-            console.log(pollListArr);
             const labelArr = pollListArr.map(x => ({
                 label: x,
                 value: x,

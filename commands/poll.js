@@ -430,7 +430,7 @@ module.exports = {
                     .addField(`Item`, result.pollItem, true)
                     .addField(`Results (Total Votes: ${result.graphTotalVotes})`, result.graph, true)
                     .setFooter({ 
-                        text: `Poll closed at ${interaction.createdAt} by ${interaction.member.displayName}`, 
+                        text: `${interaction.createdAt}:${interaction.member.displayName}에 의해 투표가 종료되었습니다.`, 
                         iconURL: interaction.guild.iconURL()
                     })
                     .setTimestamp(interaction.message.embeds[0].timestamp);
@@ -445,7 +445,7 @@ module.exports = {
                 } catch (err) {
                     console.log(`! CLOSE POLL ERR' \n ${err}`);
                     await interaction.reply({
-                        content: 'Sorry there was an issue closing the pole, if this persists please contact blink inside of the pollbot discord (use /help)',
+                        content: '투표를 종료하는데 문제가 생겼습니다.',
                         ephemeral: true,
                     });
                 }
@@ -459,7 +459,7 @@ module.exports = {
 
             } else {
                 interaction.reply({
-                        content: "Sorry you don't have the \`MANAGE_GUILD\` permission or \"Poll Manager\" role.",
+                        content: "권한이 없습니다.",
                         ephemeral: true
                     })
                     .then((message) => console.log(`! close poll: ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}] tried to close the poll "poll-${interaction.message.id}"`))

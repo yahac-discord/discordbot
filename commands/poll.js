@@ -2,42 +2,45 @@ const {  MessageActionRow, Modal, TextInputComponent, MessageButton, MessageEmbe
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const sqlite3 = require('sqlite3').verbose();
 const {errorEmbed} = require('../structures/embedMsg.js');
-const path = require('path'); // path 모듈 불러와서 변수에 담기
+const path = require('path');
 
-async function getPollGraph(db, pollId) {
-        db.serialize();
-        let result = await new Promise((resolve, reject) => {
-            db.all(`SELECT * FROM "poll-${pollId}" ORDER BY voteCount DESC`, [], (err, rows) => {
-              if (err) {
-                console.log('Error running sql: ' + sql);
-                console.log(err);
-                reject(err);
-              } else {
-                resolve(rows);
-              }
+function getAllVote(db, pollId) {
+    db.serialize();
+    let result = new Promise((resolve, reject) => {
+        db.all(
+            `SELECT * FROM "poll-${pollId}" ORDER BY voteCount DESC`, 
+            [], 
+            (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows);
+                }
             });
-        });
-        
-        let pollItemLoop = [],
-            graphLoop = [],
-            graphTotalVotes = 0;
-        
-        for (let i = 0; i < result.length; i++) {
-            pollItemLoop.push(`${result[i].pollItem}`);
-            graphTotalVotes += result[i].voteCount;
-        }
+    });
+    return result;
+}
 
-        for (let i = 0; i < result.length; i++) {
-            let dotCnt = Math.round(((100 * result[i].voteCount / graphTotalVotes) / 10));
-            let rem = (100 * result[i].voteCount / graphTotalVotes) % 10;
+function reduce(f, acc, iter) {
+    for (let i of iter) {
+        acc = f(acc, i);
+    }
+
+    return acc
+}
+
+function getPollGraph(data) {
+        let pollItem = data.map(item => item.pollItem).toString().split(',').join("\r\n")
+        let graphTotalVotes = reduce((acc, item) => acc+item.voteCount, 0, data);
+        let graph = data.map(item => {
+            let dotCnt = Math.round(((100 * item.voteCount / graphTotalVotes) / 10));
+            let rem = (100 * item.voteCount / graphTotalVotes) % 10;
             let dots = "▮".repeat(dotCnt==10 || !dotCnt ? dotCnt : dotCnt-1);
-            let left = 10 - (Math.round((100 * result[i].voteCount / graphTotalVotes) / 10));
+            let left = 10 - dotCnt;
             let empty = "▯".repeat(left);
-            graphLoop.push(`[${dots}${rem?rem:''}${empty}] (${result[i].voteCount}) ${(100 * result[i].voteCount / graphTotalVotes).toFixed(2)}%`);
-        }
-        
-        let pollItem = pollItemLoop.toString().split(',').join("\r\n"),
-            graph = graphLoop.toString().split(',').join("\r\n");
+
+            return (`[${dots}${rem?rem:''}${empty}] (${item.voteCount}) ${(100 * item.voteCount / graphTotalVotes).toFixed(2)}%`);
+        }).toString().split(',').join("\r\n")
 
         return {pollItem: pollItem, graph:graph, graphTotalVotes:graphTotalVotes};
 }
@@ -114,7 +117,6 @@ module.exports = {
                 return interaction.reply({ 
                     ephemeral: true, 
                     embeds: errorEmbed(
-                        "투표를 생성하지 못했습니다.", 
                         `명령 처리 중 에러가 발생하였습니다.\n\n${err.message}`
                     )
                 });
@@ -122,8 +124,6 @@ module.exports = {
                 console.log('Connected to the database.');
             }
         });
-        
-        let roleName = "Poll Manager";
 
         const embedTitle = interaction.fields.getTextInputValue('titleInput');
         const embedDescription = interaction.fields.getTextInputValue('descriptionInput');
@@ -131,123 +131,100 @@ module.exports = {
         const publicPoll = interaction.fields.getTextInputValue('isPublicInput').toLowerCase();
         const createThread = interaction.fields.getTextInputValue('isCreateThreadInput').toLowerCase();
 
-        if (interaction.guild.roles.cache.find(role => role.name == roleName) || interaction.member.permissions.has(Permissions.FLAGS.MANAGE_GUILD)) { 
-            const pollListArr = [...new Set(pollList.split(","))].filter(item => item != "");
-            const labelArr = pollListArr.map(x => ({
-                label: x,
-                value: x,
-                voteCount: 0
-            }));
-    
-            const selectionMenu = new MessageActionRow()
-                    .addComponents(
-                        new MessageSelectMenu()
-                        .setCustomId('sel_poll')
-                        .setPlaceholder('Please Select An Item!')
-                        .addOptions(labelArr)
-                    );
-    
-            const button = new MessageActionRow()
+        const pollListArr = [...new Set(pollList.split(","))].filter(item => item != "");
+        const labelArr = pollListArr.map(x => ({
+            label: x,
+            value: x,
+            voteCount: 0
+        }));
+
+        const selectionMenu = new MessageActionRow()
                 .addComponents(
-                    new MessageButton()
-                    .setCustomId("btn_poll")
-                    .setLabel('Close Poll')
-                    .setStyle('DANGER')
+                    new MessageSelectMenu()
+                    .setCustomId('sel_poll')
+                    .setPlaceholder('Please Select An Item!')
+                    .addOptions(labelArr)
                 );
-    
-            if (pollListArr.length > 25) {
-                return interaction.reply({ 
-                    ephemeral: true, 
-                    embeds: errorEmbed(
-                        "투표를 생성하지 못했습니다.", 
-                        `discord API가 제공하는 항목 개수(25개) 보다 항목을 많이 입력했습니다.(추가 항목:${pollListArr.length}).`
-                    )
-                });
-            } else {
-                const embed = new MessageEmbed()
-                    .setColor('#ff6633')
-                    .setAuthor({ name: '투표', iconURL: interaction.guild.iconURL() })
-                    .setTitle(embedTitle)
-                    .setDescription(embedDescription)
-                    .setTimestamp();
-                try {
-                    await interaction.reply({
-                        embeds: [embed],
-                        components: [selectionMenu, button, ]
-                    });
-                } catch (err) {
-                    db.close();
-                    return interaction.reply({ 
-                            ephemeral: true, 
-                            embeds: errorEmbed(
-                                "투표를 생성하지 못했습니다.", 
-                                `명령 처리 중 에러가 발생하였습니다.\n\n${err.message}\n\n${err.stack}`
-                            )
-                        });
-                }
 
-                // ----------------------------------------------------------------
-                
-                const message = await interaction.fetchReply();
-    
-                await db.exec(`CREATE TABLE "poll-${message.id}" ("guildName" TEXT, "guildId" INTEGER, "channelName" TEXT, "channelId" INTEGER, "pollTitle" TEXT, "pollDesc" TEXT, "pollItem" TEXT, "voteCount" INTEGER, "publicPoll" TEXT)`);
-                await db.exec(`CREATE TABLE "user-${message.id}" ("userName" TEXT, "userId" INTEGER, "pollItem" TEXT)`);
-    
-                let placeholders = pollListArr.map((movie) => `(${interaction.guild.id}, ${interaction.channel.id}, ?, 0)`).join(',');
-                
-                let sql = `INSERT INTO "poll-${message.id}"(guildId, channelId, pollItem, voteCount) VALUES ${placeholders}`;
-                let sql2 = `UPDATE "poll-${message.id}" SET guildName = ?, channelName = ?, pollTitle = ?, pollDesc = ?, publicPoll = ?`;
-                try {
-                    await db.run(sql, pollListArr);
-                    await db.run(sql2, `${interaction.guild.name}`, `${interaction.channel.name}`, `${embedTitle}`, `${embedDescription}`, `${publicPoll}`);
-                    db.close();
-                } catch (error) {
-                    console.error(error);
-                }
-    
-                if (createThread == "true") {
-                    if (interaction.channel.permissionsFor(interaction.applicationId).has(['MANAGE_THREADS'])) {
-                        return await interaction.channel.threads.create({
-                            startMessage: message.id,
-                            name: `${embedTitle}`,
-                            autoArchiveDuration: 1440,
-                            reason: `'${embedTitle} 투표 생성에 따른 스레드 생성.'`,
-                        });
-                    } else {
-                        console.log("스레드를 생성하지 않습니다.");
+        const button = new MessageActionRow()
+            .addComponents(
+                new MessageButton()
+                .setCustomId("btn_poll")
+                .setLabel('Close Poll')
+                .setStyle('DANGER')
+            );
 
-                        const threadEmbed = new MessageEmbed()
-                            .setColor('#ff6633')
-                            .setTitle(`Thread 생성 실패`)
-                            .setDescription(`스레드 생성 권한이 없습니다.`)
-                            .setImage('https://support.discord.com/hc/article_attachments/4406694690711/image1.png')
-                            .setTimestamp();
-                        
-                        return await interaction.followUp({
-                            embeds: [threadEmbed],
-                            ephemeral: true,
-                        });
-                    }
-                }
-            }
-        
+        if (pollListArr.length > 25) {
+            return interaction.reply({ 
+                ephemeral: true, 
+                embeds: errorEmbed(
+                    `discord API가 제공하는 항목 개수(25개) 보다 항목을 많이 입력했습니다.(추가 항목:${pollListArr.length}).`
+                )
+            });
         } else {
-            if (interaction.channel.permissionsFor(interaction.applicationId).has(['MANAGE_ROLES'])) {
-                interaction.guild.roles.create({
-                    name: roleName,
-                    color: "#ff6633",
-                    reason: "봇에 의한 자동 생성."
-                }).then(role => {
-                    interaction.reply({
-                            content: "투표 생성 권한이 없습니다.",
-                            ephemeral: true,
-                        });
+            const embed = new MessageEmbed()
+                .setColor('#ff6633')
+                .setAuthor({ name: '투표', iconURL: interaction.guild.iconURL() })
+                .setTitle(embedTitle)
+                .setDescription(embedDescription)
+                .setTimestamp();
+            try {
+                await interaction.reply({
+                    embeds: [embed],
+                    components: [selectionMenu, button, ]
                 });
-            } else {
-                interaction.reply({
-                    content: `투표 생성 권한이 없습니다. 관리자에게 권한을 요청하시기 바랍니다.`,
-                    ephemeral: true,
-                });
+            } catch (err) {
+                db.close();
+                return interaction.reply({ 
+                        ephemeral: true, 
+                        embeds: errorEmbed(
+                            `명령 처리 중 에러가 발생하였습니다.\n\n${err.message}\n\n${err.stack}`
+                        )
+                    });
+            }
+
+            // ----------------------------------------------------------------
+            
+            const message = await interaction.fetchReply();
+
+            await db.exec(`CREATE TABLE "poll-${message.id}" ("guildName" TEXT, "guildId" INTEGER, "channelName" TEXT, "channelId" INTEGER, "pollTitle" TEXT, "pollDesc" TEXT, "pollItem" TEXT, "voteCount" INTEGER, "publicPoll" TEXT, "creater" INTEGER)`);
+            await db.exec(`CREATE TABLE "user-${message.id}" ("userName" TEXT, "userId" INTEGER, "pollItem" TEXT)`);
+
+            let placeholders = pollListArr.map((movie) => `(${interaction.guild.id}, ${interaction.channel.id}, ?, 0)`).join(',');
+            
+            let sql = `INSERT INTO "poll-${message.id}"(guildId, channelId, pollItem, voteCount) VALUES ${placeholders}`;
+            let sql2 = `UPDATE "poll-${message.id}" SET guildName = ?, channelName = ?, pollTitle = ?, pollDesc = ?, publicPoll = ?, creater = ?`;
+            try {
+                await db.run(sql, pollListArr);
+                await db.run(sql2, `${interaction.guild.name}`, `${interaction.channel.name}`, `${embedTitle}`, `${embedDescription}`, `${publicPoll}`, `${interaction.member.id}`);
+                db.close();
+            } catch (error) {
+                console.error(error);
+            }
+
+            if (createThread == "true") {
+                if (interaction.channel.permissionsFor(interaction.applicationId).has(['MANAGE_THREADS'])) {
+                    return await interaction.channel.threads.create({
+                        startMessage: message.id,
+                        name: `${embedTitle}`,
+                        autoArchiveDuration: 1440,
+                        reason: `'${embedTitle} 투표 생성에 따른 스레드 생성.'`,
+                    });
+                } else {
+                    console.log("스레드 생성 권한이 없습니다.");
+
+                    const threadEmbed = new MessageEmbed()
+                        .setColor('#ff6633')
+                        .setTitle(`Thread 생성 실패`)
+                        .setDescription(`스레드 생성 권한이 없습니다.`)
+                        .setImage('https://support.discord.com/hc/article_attachments/4406694690711/image1.png')
+                        .setTimestamp();
+                    
+                    return await interaction.followUp({
+                        embeds: [threadEmbed],
+                        ephemeral: true,
+                    });
+                }
             }
         }
     },
@@ -317,12 +294,12 @@ module.exports = {
                         });
                 });
 
-                await db.run(`UPDATE "user-${interaction.message.id}" SET pollItem = ? WHERE userId=${member.id}`, `${choice}`);
-                await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount + 1 WHERE pollItem= ?`, `${choice}`);
-                await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount - 1 WHERE pollItem= ?`, `${originalChoice}`);
+                db.run(`UPDATE "user-${interaction.message.id}" SET pollItem = ? WHERE userId=${member.id}`, `${choice}`);
+                db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount + 1 WHERE pollItem= ?`, `${choice}`);
+                db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount - 1 WHERE pollItem= ?`, `${originalChoice}`);
 
                 if (isPublic) {
-                    const result = await getPollGraph(db, interaction.message.id);
+                    const result = getPollGraph(await getAllVote(db, interaction.message.id));
                     
                     const embed = new MessageEmbed()
                         .setColor('#ff6633')
@@ -362,7 +339,7 @@ module.exports = {
                 await db.run(`UPDATE "poll-${interaction.message.id}" SET voteCount = voteCount + 1 WHERE pollItem= ?`, `${choice}`);
                 
                 if (isPublic) {
-                    const result = await getPollGraph(db, interaction.message.id);
+                    const result = getPollGraph(await getAllVote(db, interaction.message.id));
                     
                     const embed = new MessageEmbed()
                         .setColor('#ff6633')
@@ -419,9 +396,24 @@ module.exports = {
         });
 
         try {
-            let roleName = "Poll Manager";
-            if (interaction.member.roles.cache.some(role => role.name === roleName) || interaction.member.permissions.has(Permissions.FLAGS['MANAGE_GUILD'])) {
-                const result = await getPollGraph(db, interaction.message.id);
+            db.serialize();
+
+            let creater = await new Promise((resolve, reject) => {
+                db.get(
+                    `SELECT EXISTS(SELECT creater FROM "poll-${interaction.message.id}" WHERE creater="${interaction.member.id}" LIMIT 1);`, 
+                    [], 
+                    (err, row) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        if(row) {
+                            resolve(Object.values(row)[0]);
+                        }
+                    });
+            });
+            
+            if (creater || interaction.member.permissions.has(Permissions.FLAGS['MANAGE_GUILD'])) {
+                const result = getPollGraph(await getAllVote(db, interaction.message.id));
                     
                 const embed = new MessageEmbed()
                     .setColor('#ff6633')
@@ -435,31 +427,18 @@ module.exports = {
                     })
                     .setTimestamp(interaction.message.embeds[0].timestamp);
 
-                try {
-                    await interaction.update({
-                            embeds: [embed],
-                            components: [],
-                        })
-                        .then((message) => console.log(`- close poll: ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}] closed the poll "poll-${interaction.message.id}".`));
+                await interaction.update({
+                        embeds: [embed],
+                        components: [],
+                    })
+                    .then((message) => console.log(`- close poll: ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}] closed the poll "poll-${interaction.message.id}".`));
 
-                } catch (err) {
-                    console.log(`! CLOSE POLL ERR' \n ${err}`);
-                    await interaction.reply({
-                        content: '투표를 종료하는데 문제가 생겼습니다.',
-                        ephemeral: true,
-                    });
-                }
-
-                try {
-                    await db.exec(`DROP TABLE "poll-${interaction.message.id}";`);
-                    await db.exec(`DROP TABLE "user-${interaction.message.id}";`);
-                } catch (err) {
-                    console.log('close error');
-                }
-
+                await db.exec(`DROP TABLE "poll-${interaction.message.id}";`);
+                await db.exec(`DROP TABLE "user-${interaction.message.id}";`);
+                
             } else {
                 interaction.reply({
-                        content: "권한이 없습니다.",
+                        content: "투표 삭제 권한이 없습니다.",
                         ephemeral: true
                     })
                     .then((message) => console.log(`! close poll: ${interaction.guild.name}[${interaction.guild.id}](${interaction.guild.memberCount}) ${interaction.member.displayName}[${interaction.member.id}] tried to close the poll "poll-${interaction.message.id}"`))
@@ -467,6 +446,10 @@ module.exports = {
             }
         } catch (err) {
             console.log("close poll err: " + err);
+            await interaction.reply({
+                content: '투표 종료에 문제가 생겼습니다.',
+                ephemeral: true,
+            });
         }
     }
 };

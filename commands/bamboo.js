@@ -34,11 +34,28 @@ module.exports = {
 
         const message = await interaction.fetchReply();
         
-        return await message.startThread({
-            name: `${title}`,
-            autoArchiveDuration: 60,
-            reason: '대나무 숲 질문 생성',
-        });
+        if (interaction.channel.permissionsFor(interaction.applicationId).has(['MANAGE_THREADS'])) {
+            return await interaction.channel.threads.create({
+                startMessage: message.id,
+                name: `${title}`,
+                autoArchiveDuration: 1440,
+                reason: '대나무 숲 질문 생성',
+            });
+        } else {
+            console.log("스레드 생성 권한이 없습니다.");
+
+            const threadEmbed = new MessageEmbed()
+                .setColor('#ff6633')
+                .setTitle(`Thread 생성 실패`)
+                .setDescription(`스레드 생성 권한이 없습니다.`)
+                .setImage('https://support.discord.com/hc/article_attachments/4406694690711/image1.png')
+                .setTimestamp();
+            
+            return await interaction.followUp({
+                embeds: [threadEmbed],
+                ephemeral: true,
+            });
+        }
     }
     
 };
